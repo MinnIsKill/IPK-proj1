@@ -11,25 +11,31 @@
 #include <iterator>
 #include <unistd.h>
 #include <stdlib.h>
+#include <csignal>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 using namespace std;
-
+int ServerSocket, NewSocket;
 
 /**
- * @brief 
- * https://stackoverflow.com/a/236803
+ * @brief splits a string into a vector of strings based on delim
+ * taken and modified from: https://stackoverflow.com/a/236803
+ * 
+ * @param s: string to be split
+ * @param delim: delimiter based on which to split string
  */
 template <typename Out>
-void split(const std::string &s, char delim, Out result){
-    std::istringstream iss(s);
-    std::string item;
-    while (std::getline(iss, item, delim)){
+void split(const string &s, char delim, Out result){
+    istringstream iss(s);
+    string item;
+    while (getline(iss, item, delim)){
         *result++ = item;
     }
 }
-std::vector<std::string> split(const std::string &s, char delim){
-    std::vector<std::string> elems;
-    split(s, delim, std::back_inserter(elems));
+vector<string> split(const string &s, char delim){
+    vector<string> elems;
+    split(s, delim, back_inserter(elems));
     return elems;
 }
 
@@ -42,71 +48,173 @@ unsigned get_proc_load(){
     string snapshot1;
     string snapshot2;
 
-    std::ifstream stats1("/proc/stat"); // get first snapshot
-    std::getline(stats1, snapshot1);    // save it
-    std::vector<std::string> snapshot1_split = split(snapshot1, ' '); // split it up
+    ifstream stats1("/proc/stat"); // get first snapshot
+    getline(stats1, snapshot1);    // save it
+    vector<string> snapshot1_split = split(snapshot1, ' '); // split it up
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(100)); // wait for 100ms
+    this_thread::sleep_for(chrono::milliseconds(100)); // wait for 100ms
 
-    std::ifstream stats2("/proc/stat"); // get second snapshot
-    std::getline(stats2, snapshot2);    // save it
-    std::vector<std::string> snapshot2_split = split(snapshot2, ' '); // split it up
+    ifstream stats2("/proc/stat"); // get second snapshot
+    getline(stats2, snapshot2);    // save it
+    vector<string> snapshot2_split = split(snapshot2, ' '); // split it up
 
     /** DO THE MATH **/
     // PrevIdle = previdle + previowait
-    unsigned long long PrevIdle = std::stoi(snapshot1_split[5]) + std::stoi(snapshot1_split[6]);
+    unsigned long long PrevIdle = stoi(snapshot1_split[5]) + stoi(snapshot1_split[6]);
     // Idle = idle + iowait
-    unsigned long long Idle = std::stoi(snapshot2_split[5]) + std::stoi(snapshot2_split[6]);
+    unsigned long long Idle = stoi(snapshot2_split[5]) + stoi(snapshot2_split[6]);
     // PrevNonIdle = prevuser + prevnice + prevsystem + previrq + prevsoftirq + prevsteal
-    unsigned long long PrevNonIdle = std::stoi(snapshot1_split[2]) + std::stoi(snapshot1_split[3]) + std::stoi(snapshot1_split[4]) 
-                                   + std::stoi(snapshot1_split[7]) + std::stoi(snapshot1_split[8]) + std::stoi(snapshot1_split[9]);
+    unsigned long long PrevNonIdle = stoi(snapshot1_split[2]) + stoi(snapshot1_split[3]) + stoi(snapshot1_split[4]) 
+                                   + stoi(snapshot1_split[7]) + stoi(snapshot1_split[8]) + stoi(snapshot1_split[9]);
     // NonIdle = user + nice + system + irq + softirq + steal
-    unsigned long long NonIdle = std::stoi(snapshot2_split[2]) + std::stoi(snapshot2_split[3]) + std::stoi(snapshot2_split[4]) 
-                               + std::stoi(snapshot2_split[7]) + std::stoi(snapshot2_split[8]) + std::stoi(snapshot2_split[9]);
+    unsigned long long NonIdle = stoi(snapshot2_split[2]) + stoi(snapshot2_split[3]) + stoi(snapshot2_split[4]) 
+                               + stoi(snapshot2_split[7]) + stoi(snapshot2_split[8]) + stoi(snapshot2_split[9]);
 
-    //totald = Total - PrevTotal where Total = (Idle + NonIdle) and PrevTotal = (PrevIdle + PrevNonIdle) 
+    // totald = Total - PrevTotal where Total = (Idle + NonIdle) and PrevTotal = (PrevIdle + PrevNonIdle) 
     unsigned long long totald = (Idle + NonIdle) - (PrevIdle + PrevNonIdle);
     unsigned long long idled = Idle - PrevIdle;
-
-    //CPU_Percentage = (totald - idled)/totald *100
-    //double CPU_Percentage = (double)(totald - idled)/totald *100;
 
     return (double)(totald - idled)/totald * 100;
 }
 
+/**
+ * @brief works the same way as system() command but saves the output string
+ * 
+ * @param command: regex to execute
+ * @return string returned by regex
+ */
+string my_system_func(const char* command) {
+    char buff[256];
+    string result = "";
+    FILE* fp = popen(command, "r");
 
-int main(){
-    // Task #1
-    char hostname[1024];
-    gethostname(hostname, 1024);
-    std::cout << hostname << '\n';
+    while (fgets(buff, sizeof(buff), fp) != NULL) {
+        result += buff;
+    }
 
-    // Task #2
-    system("cat /proc/cpuinfo | grep \"model name\" --max-count=1 | awk -F ':' '{print substr($2,2)}'");
-
-    // Task #3
-    std::cout << get_proc_load() << "%\n";
-
-    return 0;
+    pclose(fp);
+    return result;
 }
 
 /**
-     user    nice   system  idle      iowait irq   softirq  steal  guest  guest_nice
-cpu  74608   2520   24433   1117073   6176   4054  0        0      0      0
+ * @brief handles server closing when turned off using CTRL+C
+ */
+void signalHandler(int signum){
+    shutdown(NewSocket, SHUT_RDWR);
+    close(NewSocket);
+    shutdown(ServerSocket, SHUT_RDWR);
+    close(ServerSocket);
+    exit (signum);
+}
 
 
-PrevIdle = previdle + previowait
-Idle = idle + iowait
 
-PrevNonIdle = prevuser + prevnice + prevsystem + previrq + prevsoftirq + prevsteal
-NonIdle = user + nice + system + irq + softirq + steal
+/*****************************************
+ * @brief MAIN FUNCTION
+ * 
+ * @param argc: arguments count
+ * @param argv: arguments pointer
+ * @return 1 if error found, 0 otherwise
+*****************************************/
+int main(int argc, char *argv[]){
+    int opt = 1;
+    int PORT;
+    int valread;
+    struct sockaddr_in address;
+    int addrlen = sizeof(address);
+    char buffer[1024];
+    char hello[256] = "Hello from Server";
 
-PrevTotal = PrevIdle + PrevNonIdle
-Total = Idle + NonIdle
+    if (argc == 2){
+        if (isdigit(*argv[1])){
+            PORT = atoi(argv[1]);
+            //printf("argv[1]:  %d \n",PORT);
+            //printf("PORT:  %d \n",PORT);
+        }
+    } else {
+        fprintf(stderr,"argc error \n");
+        exit(EXIT_FAILURE);
+    }
 
-# differentiate: actual value minus the previous one
-totald = Total - PrevTotal
-idled = Idle - PrevIdle
+    if ((ServerSocket = socket(AF_INET, SOCK_STREAM, 0)) == 0) { // create socket
+        fprintf(stderr,"socket error \n");
+        exit(EXIT_FAILURE);
+    }
+    if (setsockopt(ServerSocket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))){
+        fprintf(stderr,"setsockopt error \n");
+        exit(EXIT_FAILURE);
+    }
+    if (setsockopt(ServerSocket, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt))){
+        fprintf(stderr,"setsockopt error \n");
+        exit(EXIT_FAILURE);
+    }
 
-CPU_Percentage = (double)(totald - idled)/totald
-**/
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(PORT);
+
+    if (bind(ServerSocket, (struct sockaddr*)&address, sizeof(address)) < 0){
+        fprintf(stderr,"bind error \n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (listen(ServerSocket, 3) < 0){
+        fprintf(stderr,"listen error \n");
+        exit(EXIT_FAILURE);
+    }
+
+    signal(SIGINT,signalHandler);
+
+    // main loop
+    while ((NewSocket = accept(ServerSocket, (struct sockaddr*)&address, (socklen_t*)&addrlen)) >= 0) {
+        valread = read(NewSocket, buffer, 1024);
+        // Task #1
+        if (strncmp(buffer,"GET /hostname HTTP/1.1",22) == 0){
+            char hostname[256];
+            gethostname(hostname, 256);
+
+            string msg ("HTTP/1.1 200 OK\r\nContent-Type: text/plain;\r\n\r\n");
+            msg += hostname;
+            msg += "\r\n";
+
+            const char *message = msg.c_str();
+            send(NewSocket,message,strlen(message),0);
+
+            close(NewSocket);
+        // Task #2
+        } else if (strncmp(buffer,"GET /cpu-name HTTP/1.1",22) == 0){
+            string cpu_name = my_system_func("cat /proc/cpuinfo | grep \"model name\" --max-count=1 | awk -F ':' '{print substr($2,2)}'");
+
+            string msg ("HTTP/1.1 200 OK\r\nContent-Type: text/plain;\r\n\r\n");
+            msg += cpu_name;
+
+            const char *message = msg.c_str();
+            send(NewSocket,message,strlen(message),0);
+
+            close(NewSocket);
+        // Task #3
+        } else if (strncmp(buffer,"GET /load HTTP/1.1",18) == 0){
+            unsigned load = get_proc_load();
+
+            string msg ("HTTP/1.1 200 OK\r\nContent-Type: text/plain;\r\n\r\n");
+            msg += to_string(load);
+            msg += "%\r\n";
+
+            const char *message = msg.c_str();
+            send(NewSocket,message,strlen(message),0);
+
+            close(NewSocket);
+        // Error
+        } else {
+            string msg ("HTTP/1.1 200 OK\r\nContent-Type: text/plain;\r\n\r\n");
+            msg += "400 Bad Request\r\n";
+
+            const char *message = msg.c_str();
+            send(NewSocket,message,strlen(message),0);
+
+            close(NewSocket);
+        }
+    }
+
+    return 0;
+}
