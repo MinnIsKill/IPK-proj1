@@ -11,7 +11,7 @@ using the 'make' command and will provide you with an executable.
 
 ```
 $ make
-$ ./hsinfosvc [localport]   (where 'localport' is a sequence of numbers of your choosing, e.g. 12345)
+$ ./hsinfosvc [localport]   (where 'localport' is a sequence of 4 to 5 numbers of your choosing, e.g. 12345)
 ```
 Now you have your server up and running. To close it, use the keyboard shortcut 'Ctrl+C'.
 Alternatively, add '&' as a third argument to open a server in the background.
@@ -19,7 +19,7 @@ Next, a GET request can be sent to the server, for example by using curl:
 ```
 $ curl http://localhost:12345/[command]    (more on available commands below)
 ```
-The same information can be gotten by using a browser as well, search: 'http://localhost:12345/[command]`
+The same information can be gotten by using a browser as well, search for example: 'http://localhost:12345/[hostname]`
 
 ## Supported commands
 * **hostname:**  returns name of server host
