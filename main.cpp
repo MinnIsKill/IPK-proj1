@@ -18,6 +18,12 @@
 using namespace std;
 int ServerSocket, NewSocket;
 
+/** ./hinfosvc 12345 &
+ *  curl http://localhost:12345/hostname
+ *  curl http://localhost:12345/cpu-name
+ *  curl http://localhost:12345/load
+**/ 
+
 /**
  * @brief splits a string into a vector of strings based on delim
  * taken and modified from: https://stackoverflow.com/a/236803
@@ -40,7 +46,7 @@ vector<string> split(const string &s, char delim){
 }
 
 /**
- * @brief Get the proc load object
+ * @brief Get the current processor load
  * 
  * @return current processor load in percentages
  */
@@ -52,7 +58,7 @@ unsigned get_proc_load(){
     getline(stats1, snapshot1);    // save it
     vector<string> snapshot1_split = split(snapshot1, ' '); // split it up
 
-    this_thread::sleep_for(chrono::milliseconds(100)); // wait for 100ms
+    this_thread::sleep_for(chrono::milliseconds(300)); // wait for 300ms
 
     ifstream stats2("/proc/stat"); // get second snapshot
     getline(stats2, snapshot2);    // save it
@@ -104,7 +110,7 @@ void signalHandler(int signum){
     close(NewSocket);
     shutdown(ServerSocket, SHUT_RDWR);
     close(ServerSocket);
-    exit (signum);
+    _exit (signum);
 }
 
 
